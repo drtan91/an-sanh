@@ -19,11 +19,169 @@ import {
   ListTodo,
   Users,
   Calendar,
-  RotateCcw
+  RotateCcw,
+  Copy,
+  Check,
+  BellRing
 } from 'lucide-react';
 import { TaskModal } from './TaskModal';
 import { ZaloShareModal } from './ZaloShareModal';
 import { EmployeeManager } from './EmployeeManager';
+
+export const formatEmployeeHonorific = (fullName: string): string => {
+  const trimmed = fullName.trim();
+  if (!trimmed) return 'Nhân sự';
+  if (/^(BS|Bác sĩ|Dr|ThS|TS)\.?\s+/i.test(trimmed)) return trimmed;
+  if (/^(Anh|Chị|Cô|Chú|Em)\s+/i.test(trimmed)) return trimmed;
+  if (/\b(Tuấn|Nam|Hùng|Duy|Đức|Minh|Long|Hoàng|Thành|Hải|Quân)\b/i.test(trimmed)) {
+    return `Anh ${trimmed}`;
+  }
+  return `Chị ${trimmed}`;
+};
+
+/**
+ * Tự động tạo văn bản thuần nhắc việc chuẩn định dạng gửi Zalo
+ */
+export const buildReminderNoticeText = (
+  tasks: Task[],
+  employees: Employee[],
+  todayStr: string
+): string => {
+  if (tasks.length === 0) {
+    return '📢 NHẮC VIỆC HÔM NAY\n\nHiện tại chưa có nhiệm vụ nào trong hệ thống.';
+  }
+
+  const checkIsOverdue = (t: Task) =>
+    t.status !== 'Hoàn thành' && (t.status === 'Quá hạn' || (!!t.dueDate && t.dueDate < todayStr));
+
+  // Nhóm công việc theo nhân sự phụ trách
+  const employeeTaskMap = new Map<string, Task[]>();
+
+  tasks.forEach((t) => {
+    const key = t.assignedToEmployeeId || 'unassigned';
+    if (!employeeTaskMap.has(key)) {
+      employeeTaskMap.set(key, []);
+    }
+    employeeTaskMap.get(key)!.push(t);
+  });
+
+  const lines: string[] = ['📢 NHẮC VIỆC HÔM NAY', ''];
+
+  // Sắp xếp thứ tự nhân sự: nhân sự có việc quá hạn lên trước, sau đó là việc chưa làm/đang làm
+  const sortedKeys = Array.from(employeeTaskMap.keys()).sort((a, b) => {
+    if (a === 'unassigned') return 1;
+    if (b === 'unassigned') return -1;
+    const aTasks = employeeTaskMap.get(a) || [];
+    const bTasks = employeeTaskMap.get(b) || [];
+    const aOverdue = aTasks.some(checkIsOverdue);
+    const bOverdue = bTasks.some(checkIsOverdue);
+    if (aOverdue && !bOverdue) return -1;
+    if (!aOverdue && bOverdue) return 1;
+    return 0;
+  });
+
+  sortedKeys.forEach((empKey) => {
+    const empTasks = employeeTaskMap.get(empKey) || [];
+    if (empTasks.length === 0) return;
+
+    let headerName = 'Chưa phân công:';
+    if (empKey !== 'unassigned') {
+      const emp = employees.find((e) => e.id === empKey);
+      headerName = emp ? `${formatEmployeeHonorific(emp.fullName)}:` : 'Nhân sự:';
+    }
+
+    lines.push(headerName);
+
+    // Sắp xếp ưu tiên:
+    // 1. Quá hạn lên trước
+    // 2. Chưa làm / Đang làm (hạn gần nhất trước)
+    // 3. Đã hoàn thành
+    const sortedEmpTasks = [...empTasks].sort((a, b) => {
+      const aOverdue = checkIsOverdue(a);
+      const bOverdue = checkIsOverdue(b);
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+
+      const aDone = a.status === 'Hoàn thành';
+      const bDone = b.status === 'Hoàn thành';
+      if (!aDone && bDone) return -1;
+      if (aDone && !bDone) return 1;
+
+      return (a.dueDate || '').localeCompare(b.dueDate || '');
+    });
+
+    sortedEmpTasks.forEach((t) => {
+      const cleanTitle = t.title.trim().replace(/\.+$/, '');
+      lines.push(`- ${cleanTitle}.`);
+      lines.push(`- Hạn hoàn thành: ${formatDate(t.dueDate)}.`);
+      lines.push(`- Trạng thái: ${t.status}.`);
+      lines.push(`- Ưu tiên: ${t.priority}.`);
+      lines.push('');
+    });
+  });
+
+  // Những công việc quá hạn ở cuối
+  const allOverdue = tasks.filter(checkIsOverdue);
+  if (allOverdue.length > 0) {
+    lines.push('Những công việc quá hạn:');
+    allOverdue.forEach((t) => {
+      const cleanTitle = t.title.trim().replace(/\.+$/, '');
+      lines.push(`⚠️ ${cleanTitle}.`);
+    });
+  }
+
+  return lines.join('\n').trim();
+};
+
+export const buildSingleEmployeeNoticeText = (
+  employeeId: string,
+  tasks: Task[],
+  employees: Employee[],
+  todayStr: string
+): string => {
+  const checkIsOverdue = (t: Task) =>
+    t.status !== 'Hoàn thành' && (t.status === 'Quá hạn' || (!!t.dueDate && t.dueDate < todayStr));
+
+  const empTasks = tasks.filter((t) =>
+    employeeId === 'unassigned' ? !t.assignedToEmployeeId : t.assignedToEmployeeId === employeeId
+  );
+
+  if (empTasks.length === 0) {
+    return '📢 NHẮC VIỆC\n\nHiện tại chưa có nhiệm vụ nào được phân công.';
+  }
+
+  const emp = employees.find((e) => e.id === employeeId);
+  const titleName = emp ? formatEmployeeHonorific(emp.fullName) : 'Nhân sự';
+  const lines: string[] = [`📢 NHẮC VIỆC - ${titleName}`, ''];
+
+  const sortedTasks = [...empTasks].sort((a, b) => {
+    const aOverdue = checkIsOverdue(a);
+    const bOverdue = checkIsOverdue(b);
+    if (aOverdue && !bOverdue) return -1;
+    if (!aOverdue && bOverdue) return 1;
+    return (a.dueDate || '').localeCompare(b.dueDate || '');
+  });
+
+  sortedTasks.forEach((t) => {
+    const cleanTitle = t.title.trim().replace(/\.+$/, '');
+    lines.push(`- ${cleanTitle}.`);
+    lines.push(`- Hạn hoàn thành: ${formatDate(t.dueDate)}.`);
+    lines.push(`- Trạng thái: ${t.status}.`);
+    lines.push(`- Ưu tiên: ${t.priority}.`);
+    lines.push('');
+  });
+
+  const empOverdue = sortedTasks.filter(checkIsOverdue);
+  if (empOverdue.length > 0) {
+    lines.push('Những công việc quá hạn:');
+    empOverdue.forEach((t) => {
+      const cleanTitle = t.title.trim().replace(/\.+$/, '');
+      lines.push(`⚠️ ${cleanTitle}.`);
+    });
+  }
+
+  return lines.join('\n').trim();
+};
 
 interface TaskManagerProps {
   tasks: Task[];
@@ -79,6 +237,81 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   }, []);
+
+  // Reminder Notice & Copy State
+  const [copyNoticeSuccess, setCopyNoticeSuccess] = useState(false);
+  const [copiedEmpId, setCopiedEmpId] = useState<string | null>(null);
+
+  // Build full reminder notice text for display & Zalo clipboard copy
+  const reminderNoticeText = useMemo(() => {
+    return buildReminderNoticeText(tasks, employees, todayStr);
+  }, [tasks, employees, todayStr]);
+
+  const employeeListWithTasks = useMemo(() => {
+    const result: { id: string; name: string; count: number }[] = [];
+    employees.forEach((emp) => {
+      const count = tasks.filter((t) => t.assignedToEmployeeId === emp.id).length;
+      if (count > 0) {
+        result.push({
+          id: emp.id,
+          name: formatEmployeeHonorific(emp.fullName),
+          count,
+        });
+      }
+    });
+    const unassignedCount = tasks.filter((t) => !t.assignedToEmployeeId).length;
+    if (unassignedCount > 0) {
+      result.push({
+        id: 'unassigned',
+        name: 'Chưa phân công',
+        count: unassignedCount,
+      });
+    }
+    return result;
+  }, [tasks, employees]);
+
+  const handleCopyNotice = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(reminderNoticeText);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = reminderNoticeText;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopyNoticeSuccess(true);
+      setTimeout(() => setCopyNoticeSuccess(false), 2500);
+    } catch (err) {
+      console.error('Lỗi khi sao chép nội dung nhắc việc: ', err);
+    }
+  };
+
+  const handleCopyForEmployee = async (empId: string) => {
+    const text = buildSingleEmployeeNoticeText(empId, tasks, employees, todayStr);
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedEmpId(empId);
+      setTimeout(() => setCopiedEmpId(null), 2500);
+    } catch (err) {
+      console.error('Lỗi khi sao chép nội dung nhắc việc theo nhân sự: ', err);
+    }
+  };
 
   // Filter tasks
   const filteredTasks = useMemo(() => {
@@ -338,70 +571,87 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
         />
       ) : (
         <>
-          {/* Quick Metrics Bar by Category */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3">
-            <div
-              onClick={() => setSelectedCategory('all')}
-              className={`p-2.5 sm:p-4 rounded-2xl border transition-all cursor-pointer ${
-                selectedCategory === 'all'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20 border-blue-600'
-                  : 'bg-white text-slate-800 border-slate-200 hover:border-blue-300'
-              }`}
-            >
-              <span className="text-xs font-semibold uppercase tracking-wider opacity-80">Tất cả nhiệm vụ</span>
-              <div className="text-2xl font-bold mt-0.5 sm:mt-1">{stats.total}</div>
-              <div className="text-xs mt-0.5 sm:mt-1 opacity-80">
-                {stats.completed} đã hoàn thành ({Math.round((stats.completed / (stats.total || 1)) * 100)}%)
+          {/* THÔNG BÁO NHẮC VIỆC */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 p-3.5 sm:p-5 shadow-xs space-y-3">
+            {/* Header row */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100 shadow-2xs">
+                  <BellRing className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-900 text-sm sm:text-base tracking-tight">
+                      THÔNG BÁO NHẮC VIỆC
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700">
+                      Gửi Zalo
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Tự động tạo nội dung tổng hợp từ các nhiệm vụ hiện có để sao chép và gửi trực tiếp qua Zalo
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Button: Copy All */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyNotice}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer ${
+                    copyNoticeSuccess
+                      ? 'bg-emerald-600 text-white shadow-emerald-600/20'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20'
+                  }`}
+                  title="Sao chép toàn bộ thông báo nhắc việc vào bộ nhớ tạm"
+                >
+                  {copyNoticeSuccess ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Đã sao chép!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span>Sao chép toàn bộ</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
 
-            <div
-              onClick={() => setSelectedCategory('Bệnh viện')}
-              className={`p-2.5 sm:p-4 rounded-2xl border transition-all cursor-pointer ${
-                selectedCategory === 'Bệnh viện'
-                  ? 'bg-blue-700 text-white shadow-md border-blue-700'
-                  : 'bg-white text-slate-800 border-slate-200 hover:border-blue-300'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider opacity-80">Bệnh viện</span>
-                <Building className="w-4 h-4 text-blue-500" />
-              </div>
-              <div className="text-2xl font-bold mt-0.5 sm:mt-1">{stats.benhVien}</div>
-              <div className="text-xs mt-0.5 sm:mt-1 opacity-70">Khám thai, mổ, hội chẩn</div>
+            {/* Formatted Text Box */}
+            <div className="relative bg-slate-50 rounded-xl border border-slate-200/80 p-3.5 sm:p-4 text-xs font-mono text-slate-800 leading-relaxed max-h-60 overflow-y-auto whitespace-pre-wrap select-text">
+              {reminderNoticeText}
             </div>
 
-            <div
-              onClick={() => setSelectedCategory('An Sanh')}
-              className={`p-2.5 sm:p-4 rounded-2xl border transition-all cursor-pointer ${
-                selectedCategory === 'An Sanh'
-                  ? 'bg-emerald-600 text-white shadow-md border-emerald-600'
-                  : 'bg-white text-slate-800 border-slate-200 hover:border-emerald-300'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider opacity-80">An Sanh</span>
-                <HeartHandshake className="w-4 h-4 text-emerald-500" />
+            {/* Individual Employee Quick Copy Chips */}
+            {employeeListWithTasks.length > 0 && (
+              <div className="pt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                <span className="font-semibold mr-1 text-[11px] text-slate-600">Sao chép riêng cho từng người:</span>
+                {employeeListWithTasks.map((emp) => (
+                  <button
+                    key={emp.id}
+                    type="button"
+                    onClick={() => handleCopyForEmployee(emp.id)}
+                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all flex items-center gap-1 cursor-pointer ${
+                      copiedEmpId === emp.id
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300 font-bold'
+                        : 'bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 border-slate-200 hover:border-blue-200 shadow-2xs'
+                    }`}
+                    title={`Sao chép danh sách công việc của ${emp.name}`}
+                  >
+                    {copiedEmpId === emp.id ? (
+                      <Check className="w-3 h-3 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-3 h-3 text-slate-400" />
+                    )}
+                    <span>{emp.name} ({emp.count})</span>
+                  </button>
+                ))}
               </div>
-              <div className="text-2xl font-bold mt-0.5 sm:mt-1">{stats.anSanh}</div>
-              <div className="text-xs mt-0.5 sm:mt-1 opacity-70">Buồng phòng & chăm sóc cữ</div>
-            </div>
-
-            <div
-              onClick={() => setSelectedCategory('Cá nhân')}
-              className={`p-2.5 sm:p-4 rounded-2xl border transition-all cursor-pointer ${
-                selectedCategory === 'Cá nhân'
-                  ? 'bg-amber-600 text-white shadow-md border-amber-600'
-                  : 'bg-white text-slate-800 border-slate-200 hover:border-amber-300'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider opacity-80">Cá nhân</span>
-                <UserCheck className="w-4 h-4 text-amber-500" />
-              </div>
-              <div className="text-2xl font-bold mt-0.5 sm:mt-1">{stats.caNhan}</div>
-              <div className="text-xs mt-0.5 sm:mt-1 opacity-70">Tài chính, học tập, đối ngoại</div>
-            </div>
+            )}
           </div>
 
           {/* Status & Deadline Metrics Bar */}
@@ -548,6 +798,21 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
 
             {/* Filter Dropdowns */}
             <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+              {/* Filter: Phân loại danh mục */}
+              <div className="flex items-center gap-1.5 flex-1 sm:flex-initial">
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full sm:w-auto px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  title="Lọc theo phân loại danh mục"
+                >
+                  <option value="all">Tất cả danh mục ({stats.total})</option>
+                  <option value="Bệnh viện">Bệnh viện ({stats.benhVien})</option>
+                  <option value="An Sanh">An Sanh ({stats.anSanh})</option>
+                  <option value="Cá nhân">Cá nhân ({stats.caNhan})</option>
+                </select>
+              </div>
+
               {/* Filter: Nhân viên phụ trách */}
               <div className="flex items-center gap-1.5 flex-1 sm:flex-initial">
                 <select
