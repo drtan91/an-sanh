@@ -14,16 +14,27 @@ import {
   Sparkles,
   Phone,
   Sun,
-  Eye
+  Eye,
+  RotateCcw,
+  AlertCircle
 } from 'lucide-react';
 import { RoomDetailModal } from './RoomDetailModal';
 
 interface RoomManagerProps {
   rooms: Room[];
-  onUpdateRoom: (roomId: string, data: Partial<Room>) => void;
+  onUpdateRoom: (roomId: string, data: Partial<Room>) => Promise<void> | void;
+  isLoading?: boolean;
+  error?: string | null;
+  onRefresh?: () => void;
 }
 
-export const RoomManager: React.FC<RoomManagerProps> = ({ rooms, onUpdateRoom }) => {
+export const RoomManager: React.FC<RoomManagerProps> = ({
+  rooms,
+  onUpdateRoom,
+  isLoading = false,
+  error = null,
+  onRefresh,
+}) => {
   const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('grid');
@@ -63,6 +74,24 @@ export const RoomManager: React.FC<RoomManagerProps> = ({ rooms, onUpdateRoom })
 
   return (
     <div className="space-y-3 sm:space-y-6">
+      {/* Error alert banner from Supabase */}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-2xl text-xs flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              className="px-3 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold rounded-lg transition-colors flex items-center gap-1 shrink-0"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Thử lại
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Top Metric Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 sm:gap-3">
         <div className="p-2.5 sm:p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
@@ -161,6 +190,17 @@ export const RoomManager: React.FC<RoomManagerProps> = ({ rooms, onUpdateRoom })
           </select>
 
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={isLoading}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-700 transition-all disabled:opacity-50"
+                title="Làm mới từ Supabase"
+              >
+                <RotateCcw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
+              </button>
+            )}
             <button
               onClick={() => setViewMode('grid')}
               className={`p-1.5 rounded-lg transition-all ${

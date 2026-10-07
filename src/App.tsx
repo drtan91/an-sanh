@@ -18,6 +18,10 @@ import {
   deleteTaskFromSupabase,
   seedTasksToSupabase,
 } from './services/taskService';
+import {
+  fetchRoomsFromSupabase,
+  updateRoomInSupabase,
+} from './services/roomService';
 import { CustomerList } from './components/crm/CustomerList';
 import { TaskManager } from './components/tasks/TaskManager';
 import { RoomManager } from './components/ansanh/RoomManager';
@@ -57,6 +61,8 @@ export default function App() {
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [isRoomsLoading, setIsRoomsLoading] = useState<boolean>(true);
+  const [roomsError, setRoomsError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
 
@@ -152,19 +158,45 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // When auth changes, fetch tasks & customers & operational data if logged in, or clear if logged out
+  // Load Rooms from Supabase (Source of Truth - shared across all devices & environments)
+  const loadRooms = useCallback(async () => {
+    if (!currentUser) {
+      setRooms([]);
+      setIsRoomsLoading(false);
+      setRoomsError(null);
+      return;
+    }
+
+    setIsRoomsLoading(true);
+    setRoomsError(null);
+    try {
+      const { data, error } = await fetchRoomsFromSupabase({ autoSeedIfEmpty: true });
+      if (error) {
+        setRoomsError(error);
+      } else {
+        setRooms(data);
+        saveStoredData.rooms(data);
+      }
+    } catch (err: any) {
+      setRoomsError(err?.message || 'Lỗi không xác định khi tải buồng phòng từ Supabase');
+    } finally {
+      setIsRoomsLoading(false);
+    }
+  }, [currentUser]);
+
+  // When auth changes, fetch tasks & customers & rooms & operational data if logged in, or clear if logged out
   useEffect(() => {
     if (currentUser) {
-      // 1. Load internal operational data from local storage
+      // 1. Load internal operational data from local storage (employees, transactions, attendance)
       const data = loadStoredData();
       setEmployees(data.employees);
-      setRooms(data.rooms);
       setTransactions(data.transactions);
       setAttendance(data.attendance);
 
-      // 2. Load Supabase data
+      // 2. Load Supabase data (single source of truth for customers, tasks, rooms)
       loadCustomers();
       loadTasks();
+      loadRooms();
     } else {
       // Clear all internal data from state when logged out
       setCustomers([]);
@@ -175,8 +207,9 @@ export default function App() {
       setAttendance([]);
       setIsCustomersLoading(false);
       setIsTasksLoading(false);
+      setIsRoomsLoading(false);
     }
-  }, [currentUser, loadCustomers, loadTasks]);
+  }, [currentUser, loadCustomers, loadTasks, loadRooms]);
 
   // Logout handler: sign out and wipe state
   const handleLogout = async () => {
@@ -191,20 +224,13 @@ export default function App() {
     setMainTab('overview');
     setCustomersError(null);
     setTasksError(null);
+    setRoomsError(null);
   };
 
   const updateEmployees = (updater: (prev: Employee[]) => Employee[]) => {
     setEmployees((prev) => {
       const updated = updater(prev);
       saveStoredData.employees(updated);
-      return updated;
-    });
-  };
-
-  const updateRooms = (updater: (prev: Room[]) => Room[]) => {
-    setRooms((prev) => {
-      const updated = updater(prev);
-      saveStoredData.rooms(updated);
       return updated;
     });
   };
@@ -229,11 +255,11 @@ export default function App() {
       const fresh = loadStoredData();
       setTasks(fresh.tasks);
       setEmployees(fresh.employees);
-      setRooms(fresh.rooms);
       setTransactions(fresh.transactions);
       setAttendance(fresh.attendance);
       await loadCustomers();
       await loadTasks();
+      await loadRooms();
     }
   };
 
@@ -380,11 +406,29 @@ export default function App() {
     updateEmployees((prev) => prev.filter((e) => e.id !== id));
   };
 
-  // Handlers for Rooms
-  const handleUpdateRoom = (roomId: string, data: Partial<Room>) => {
-    updateRooms((prev) =>
+  // Handlers for Rooms (Supabase integration)
+  const handleUpdateRoom = async (roomId: string, data: Partial<Room>) => {
+    // 1. Optimistic UI update so interaction feels instantaneous
+    setRooms((prev) =>
       prev.map((r) => (r.id === roomId ? { ...r, ...data } : r))
     );
+
+    // 2. Persist to Supabase
+    setRoomsError(null);
+    const { data: updatedRoom, error } = await updateRoomInSupabase(roomId, data);
+    if (error) {
+      setRoomsError(error);
+      // Revert/refresh to ensure consistency with database
+      await loadRooms();
+      return;
+    }
+
+    if (updatedRoom) {
+      setRooms((prev) =>
+        prev.map((r) => (r.id === roomId ? updatedRoom : r))
+      );
+      saveStoredData.rooms(rooms.map((r) => (r.id === roomId ? updatedRoom : r)));
+    }
   };
 
   // Handlers for Finance
@@ -653,7 +697,13 @@ export default function App() {
 
             {/* Table a: Room Manager */}
             {ansanhSubTab === 'rooms' && (
-              <RoomManager rooms={rooms} onUpdateRoom={handleUpdateRoom} />
+              <RoomManager
+                rooms={rooms}
+                onUpdateRoom={handleUpdateRoom}
+                isLoading={isRoomsLoading}
+                error={roomsError}
+                onRefresh={loadRooms}
+              />
             )}
 
             {/* Table b: Finance Manager */}
