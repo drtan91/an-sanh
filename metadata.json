@@ -1,0 +1,6 @@
+{
+  "name": "An Sanh Management System",
+  "description": "Hệ thống quản lý khách hàng CRM, công việc & giao việc, và kinh doanh Trung tâm ở cữ An Sanh tích hợp báo cáo tự động",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
