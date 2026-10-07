@@ -443,8 +443,8 @@ export default function App() {
               </div>
               <div>
                 <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900 leading-tight">
-                  AN SANH - BS.TÂN
-                  </h1>
+                  AN SANH - Dr.Tan
+                </h1>
               </div>
             </div>
 
