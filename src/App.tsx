@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Customer, Employee, Room, Task, Transaction, AttendanceRecord } from './types';
+import { Customer, Employee, Room, Task, Transaction, AttendanceRecord, RoomBooking } from './types';
 import { loadStoredData, saveStoredData } from './utils/storage';
 import { INITIAL_TASKS } from './data/initialData';
 import { User } from '@supabase/supabase-js';
@@ -22,6 +22,15 @@ import {
   fetchRoomsFromSupabase,
   updateRoomInSupabase,
 } from './services/roomService';
+import {
+  fetchBookingsFromSupabase,
+  createBookingInSupabase,
+  updateBookingInSupabase,
+  checkoutBookingInSupabase,
+  cancelBookingInSupabase,
+  deleteBookingFromSupabase,
+  syncAllRoomsFromBookings,
+} from './services/bookingService';
 import { CustomerList } from './components/crm/CustomerList';
 import { TaskManager } from './components/tasks/TaskManager';
 import { RoomManager } from './components/ansanh/RoomManager';
@@ -66,6 +75,9 @@ export default function App() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isRoomsLoading, setIsRoomsLoading] = useState<boolean>(true);
   const [roomsError, setRoomsError] = useState<string | null>(null);
+  const [bookings, setBookings] = useState<RoomBooking[]>([]);
+  const [isBookingsLoading, setIsBookingsLoading] = useState<boolean>(false);
+  const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
 
@@ -161,6 +173,43 @@ export default function App() {
     }
   }, [currentUser]);
 
+  // Load Bookings from Supabase
+  const loadBookings = useCallback(async (currentRoomsList: Room[] = rooms) => {
+    if (!currentUser) {
+      setBookings([]);
+      setIsBookingsLoading(false);
+      setBookingsError(null);
+      return;
+    }
+
+    setIsBookingsLoading(true);
+    setBookingsError(null);
+    try {
+      const { data, error } = await fetchBookingsFromSupabase(currentRoomsList);
+      if (error && (!data || data.length === 0)) {
+        setBookingsError(error);
+      }
+      const fetchedBookings = data || [];
+      setBookings(fetchedBookings);
+
+      // YÊU CẦU 3: ROOM STATUS PHẢI ĐƯỢC TÍNH LẠI KHI APP MỞ/REFRESH
+      // Khi App load hoặc refresh rooms/bookings: Gọi syncAllRoomsFromBookings
+      // để xác định trạng thái phòng theo CURRENT_DATE ([check_in, check_out)).
+      // Booking ngày [10/10 -> 15/10): ngày 15/10 không còn active, rooms = Trống (nếu ko có booking khác).
+      if (currentRoomsList && currentRoomsList.length > 0) {
+        const { updatedRooms, hasChanges } = await syncAllRoomsFromBookings(currentRoomsList, fetchedBookings);
+        if (hasChanges) {
+          setRooms(updatedRooms);
+          saveStoredData.rooms(updatedRooms);
+        }
+      }
+    } catch (err: any) {
+      setBookingsError(err?.message || 'Lỗi không xác định khi tải lịch đặt phòng');
+    } finally {
+      setIsBookingsLoading(false);
+    }
+  }, [currentUser, rooms]);
+
   // Load Rooms from Supabase (Source of Truth - shared across all devices & environments)
   const loadRooms = useCallback(async () => {
     if (!currentUser) {
@@ -179,13 +228,14 @@ export default function App() {
       } else {
         setRooms(data);
         saveStoredData.rooms(data);
+        loadBookings(data);
       }
     } catch (err: any) {
       setRoomsError(err?.message || 'Lỗi không xác định khi tải buồng phòng từ Supabase');
     } finally {
       setIsRoomsLoading(false);
     }
-  }, [currentUser]);
+  }, [currentUser, loadBookings]);
 
   // When auth changes, fetch tasks & customers & rooms & operational data if logged in, or clear if logged out
   useEffect(() => {
@@ -196,7 +246,7 @@ export default function App() {
       setTransactions(data.transactions);
       setAttendance(data.attendance);
 
-      // 2. Load Supabase data (single source of truth for customers, tasks, rooms)
+      // 2. Load Supabase data (single source of truth for customers, tasks, rooms, bookings)
       loadCustomers();
       loadTasks();
       loadRooms();
@@ -206,13 +256,15 @@ export default function App() {
       setTasks([]);
       setEmployees([]);
       setRooms([]);
+      setBookings([]);
       setTransactions([]);
       setAttendance([]);
       setIsCustomersLoading(false);
       setIsTasksLoading(false);
       setIsRoomsLoading(false);
+      setIsBookingsLoading(false);
     }
-  }, [currentUser, loadCustomers, loadTasks, loadRooms]);
+  }, [currentUser, loadCustomers, loadTasks, loadRooms, loadBookings]);
 
   // Logout handler: sign out and wipe state
   const handleLogout = async () => {
@@ -222,12 +274,14 @@ export default function App() {
     setTasks([]);
     setEmployees([]);
     setRooms([]);
+    setBookings([]);
     setTransactions([]);
     setAttendance([]);
     setMainTab('overview');
     setCustomersError(null);
     setTasksError(null);
     setRoomsError(null);
+    setBookingsError(null);
   };
 
   const updateEmployees = (updater: (prev: Employee[]) => Employee[]) => {
@@ -432,6 +486,76 @@ export default function App() {
       );
       saveStoredData.rooms(rooms.map((r) => (r.id === roomId ? updatedRoom : r)));
     }
+  };
+
+  // Handlers for Bookings (Public.room_bookings & Room auto-sync)
+  const handleCreateBooking = async (
+    bookingData: Omit<RoomBooking, 'id'>
+  ): Promise<{ success: boolean; error?: string | null }> => {
+    setBookingsError(null);
+    const { data, error } = await createBookingInSupabase(bookingData, bookings, rooms);
+    if (error || !data) {
+      setBookingsError(error);
+      return { success: false, error: error || 'Lỗi khi tạo lịch đặt phòng' };
+    }
+    setBookings((prev) => [...prev, data]);
+    await loadRooms();
+    return { success: true, error: null };
+  };
+
+  const handleUpdateBooking = async (
+    bookingId: string,
+    updatedData: Partial<RoomBooking>
+  ): Promise<{ success: boolean; error?: string | null }> => {
+    setBookingsError(null);
+    const { data, error } = await updateBookingInSupabase(bookingId, updatedData, bookings, rooms);
+    if (error || !data) {
+      setBookingsError(error);
+      return { success: false, error: error || 'Lỗi khi cập nhật lịch đặt phòng' };
+    }
+    setBookings((prev) => prev.map((b) => (b.id === bookingId ? data : b)));
+    await loadRooms();
+    return { success: true, error: null };
+  };
+
+  const handleCheckoutBooking = async (
+    bookingId: string,
+    actualEndDate?: string
+  ): Promise<void> => {
+    setBookingsError(null);
+    const { data, error } = await checkoutBookingInSupabase(bookingId, actualEndDate, bookings, rooms);
+    if (error) {
+      setBookingsError(error);
+      return;
+    }
+    if (data) {
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? data : b)));
+    }
+    await loadRooms();
+  };
+
+  const handleCancelBooking = async (bookingId: string): Promise<void> => {
+    setBookingsError(null);
+    const { data, error } = await cancelBookingInSupabase(bookingId, bookings, rooms);
+    if (error) {
+      setBookingsError(error);
+      return;
+    }
+    if (data) {
+      setBookings((prev) => prev.map((b) => (b.id === bookingId ? data : b)));
+    }
+    await loadRooms();
+  };
+
+  const handleDeleteBooking = async (bookingId: string, roomId: string): Promise<void> => {
+    setBookingsError(null);
+    const { success, error } = await deleteBookingFromSupabase(bookingId, roomId, bookings, rooms);
+    if (!success) {
+      setBookingsError(error);
+      return;
+    }
+    setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+    await loadRooms();
   };
 
   // Handlers for Finance
@@ -705,10 +829,18 @@ export default function App() {
             {ansanhSubTab === 'rooms' && (
               <RoomManager
                 rooms={rooms}
+                bookings={bookings}
                 onUpdateRoom={handleUpdateRoom}
-                isLoading={isRoomsLoading}
-                error={roomsError}
-                onRefresh={loadRooms}
+                onCreateBooking={handleCreateBooking}
+                onUpdateBooking={handleUpdateBooking}
+                onCheckoutBooking={handleCheckoutBooking}
+                onCancelBooking={handleCancelBooking}
+                onDeleteBooking={handleDeleteBooking}
+                isLoading={isRoomsLoading || isBookingsLoading}
+                error={roomsError || bookingsError}
+                onRefresh={() => {
+                  loadRooms();
+                }}
               />
             )}
 

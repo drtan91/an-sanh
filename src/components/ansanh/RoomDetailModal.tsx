@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Room, RoomStatus, BedType, ViewType } from '../../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Room, RoomStatus, BedType, ViewType, RoomBooking } from '../../types';
 import { formatCurrency, formatDate } from '../../utils/storage';
 import {
   X,
@@ -22,6 +22,11 @@ interface RoomDetailModalProps {
   onClose: () => void;
   room: Room | null;
   onSaveRoom: (roomId: string, updatedData: Partial<Room>) => void;
+  initialEditing?: boolean;
+  initialCheckInDate?: string;
+  bookings?: RoomBooking[];
+  onOpenBookingModal?: (booking: RoomBooking | null, initialRoomId?: string, initialDate?: string) => void;
+  onCheckoutBooking?: (bookingId: string) => Promise<void>;
 }
 
 export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
@@ -29,20 +34,48 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
   onClose,
   room,
   onSaveRoom,
+  initialEditing = false,
+  initialCheckInDate,
+  bookings = [],
+  onOpenBookingModal,
+  onCheckoutBooking,
 }) => {
   if (!isOpen || !room) return null;
 
-  const [isEditing, setIsEditing] = useState(false);
+  const roomBookings = useMemo(() => {
+    return bookings
+      .filter((b) => b.roomId === room.id && b.status !== 'Đã hủy')
+      .sort((a, b) => b.checkInDate.localeCompare(a.checkInDate));
+  }, [bookings, room.id]);
+
+  const [isEditing, setIsEditing] = useState(initialEditing);
   const [bedType, setBedType] = useState<BedType>(room.bedType);
   const [viewType, setViewType] = useState<ViewType>(room.viewType);
   const [pricePerDay, setPricePerDay] = useState(room.pricePerDay);
   const [status, setStatus] = useState<RoomStatus>(room.status);
   const [guestName, setGuestName] = useState(room.guestName || '');
   const [guestPhone, setGuestPhone] = useState(room.guestPhone || '');
-  const [checkInDate, setCheckInDate] = useState(room.checkInDate || '');
+  const [checkInDate, setCheckInDate] = useState(initialCheckInDate || room.checkInDate || '');
   const [checkOutDate, setCheckOutDate] = useState(room.checkOutDate || '');
   const [notes, setNotes] = useState(room.notes || '');
   const [imageUrl, setImageUrl] = useState(room.image || '');
+
+  // Keep internal state synchronized whenever selected room changes
+  useEffect(() => {
+    if (room) {
+      setBedType(room.bedType);
+      setViewType(room.viewType);
+      setPricePerDay(room.pricePerDay);
+      setStatus(room.status);
+      setGuestName(room.guestName || '');
+      setGuestPhone(room.guestPhone || '');
+      setCheckInDate(initialCheckInDate || room.checkInDate || '');
+      setCheckOutDate(room.checkOutDate || '');
+      setNotes(room.notes || '');
+      setImageUrl(room.image || '');
+      setIsEditing(initialEditing);
+    }
+  }, [room?.id, isOpen, initialEditing, initialCheckInDate]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -217,6 +250,70 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
                 </div>
               ) : (
                 <p className="text-xs text-slate-400 italic">Phòng đang trống, chưa có khách đặt.</p>
+              )}
+            </div>
+
+            {/* Lịch các đợt đặt phòng & lưu trú */}
+            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                  Lịch Đặt Phòng ({roomBookings.length})
+                </h4>
+                {onOpenBookingModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenBookingModal(null, room.id);
+                    }}
+                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    + Đặt lịch mới
+                  </button>
+                )}
+              </div>
+
+              {roomBookings.length > 0 ? (
+                <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                  {roomBookings.map((bk) => (
+                    <div
+                      key={bk.id}
+                      onClick={() => {
+                        if (onOpenBookingModal) {
+                          onClose();
+                          onOpenBookingModal(bk);
+                        }
+                      }}
+                      className="p-2 bg-white rounded-lg border border-slate-200 hover:border-emerald-300 flex items-center justify-between text-xs cursor-pointer transition-colors"
+                    >
+                      <div>
+                        <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                          <span>{bk.guestName}</span>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.2 rounded font-bold ${
+                              bk.status === 'Đang ở'
+                                ? 'bg-indigo-100 text-indigo-800'
+                                : bk.status === 'Đặt chỗ'
+                                ? 'bg-amber-100 text-amber-800'
+                                : bk.status === 'Kết thúc'
+                                ? 'bg-slate-100 text-slate-600'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {bk.status}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {formatDate(bk.checkInDate)} ➔ {formatDate(bk.checkOutDate)}
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-emerald-700 font-semibold">Chi tiết ➔</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-400 italic">Chưa có lịch đặt phòng nào cho phòng này.</p>
               )}
             </div>
 

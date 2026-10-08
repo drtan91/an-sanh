@@ -62,6 +62,23 @@ export type RoomStatus = 'Trống' | 'Đặt chỗ' | 'Đã nhận';
 export type BedType = '1 giường' | '2 giường';
 export type ViewType = 'Cửa sổ' | 'Ban công';
 
+export type BookingStatus = 'Đặt chỗ' | 'Đang ở' | 'Kết thúc' | 'Đã hủy';
+
+export interface RoomBooking {
+  id: string;
+  roomId: string;
+  roomNumber: string;
+  guestName: string;
+  guestPhone?: string;
+  checkInDate: string; // YYYY-MM-DD
+  checkOutDate: string; // YYYY-MM-DD
+  status: BookingStatus;
+  totalPrice?: number;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Room {
   id: string;
   floor: 2 | 3 | 4;
