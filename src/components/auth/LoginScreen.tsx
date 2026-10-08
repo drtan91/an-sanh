@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Mail, ShieldAlert, CheckCircle2, Eye, EyeOff, Loader2, HeartHandshake, ShieldCheck } from 'lucide-react';
 import { signInStaff } from '../../services/authService';
+import { PWAInstallButton } from '../common/PWAInstallButton';
 
 interface LoginScreenProps {
   onLoginSuccess: () => void;
@@ -56,14 +57,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
       {/* Main Login Card */}
       <div className="bg-white text-slate-900 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
-        <div className="px-6 pt-6 pb-4 bg-gradient-to-r from-blue-700 to-indigo-800 text-white">
-          <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center mb-2">
-            <Lock className="w-5 h-5 text-white" />
+        <div className="px-6 pt-6 pb-4 bg-gradient-to-r from-blue-700 to-indigo-800 text-white flex items-center justify-between">
+          <div>
+            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center mb-2">
+              <Lock className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-lg font-bold">Đăng Nhập Nhân Viên</h2>
+            <p className="text-xs text-blue-100 mt-0.5">
+              Xác thực quyền truy cập hệ thống
+            </p>
           </div>
-          <h2 className="text-lg font-bold">Đăng Nhập Cán Bộ Nhân Viên</h2>
-          <p className="text-xs text-blue-100 mt-0.5">
-            Xác thực tài khoản nhân sự được cấp quyền để truy cập hệ thống
-          </p>
+          <div className="shrink-0">
+            <PWAInstallButton />
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">

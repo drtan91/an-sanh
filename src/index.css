@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+/* Mobile & PWA ergonomics */
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  
+  body {
+    /* Prevent rubber-banding on iOS while keeping standard scroll */
+    overscroll-behavior-y: contain;
+  }
+}
+
+/* Safe Area Inset utilities for notched devices (iOS & modern Android) */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.safe-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Custom smooth horizontal touch-scrolling */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

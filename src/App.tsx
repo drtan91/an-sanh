@@ -29,6 +29,9 @@ import { FinanceManager } from './components/ansanh/FinanceManager';
 import { AttendanceManager } from './components/ansanh/AttendanceManager';
 import { RevenueCharts } from './components/dashboard/RevenueCharts';
 import { ProgressReport } from './components/dashboard/ProgressReport';
+import { PWAInstallButton } from './components/common/PWAInstallButton';
+import { OfflineIndicator } from './components/common/OfflineIndicator';
+import { MobileBottomNav } from './components/common/MobileBottomNav';
 import {
   BarChart3,
   Users2,
@@ -492,9 +495,12 @@ export default function App() {
               </div>
             </div>
 
-            {/* Quick Actions, Auth Status & Reset Demo */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 bg-blue-50/80 border border-blue-200/80 px-2.5 py-1 rounded-xl">
+            {/* Quick Actions, Auth Status, PWA Install & Reset Demo */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* PWA Install App Button */}
+              <PWAInstallButton />
+
+              <div className="flex items-center gap-1.5 sm:gap-2 bg-blue-50/80 border border-blue-200/80 px-2 sm:px-2.5 py-1 rounded-xl">
                 <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
                   {currentUser.email ? currentUser.email.charAt(0).toUpperCase() : 'U'}
                 </div>
@@ -508,7 +514,7 @@ export default function App() {
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1"
+                  className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-0.5"
                   title="Đăng xuất khỏi hệ thống"
                 >
                   <LogOut className="w-4 h-4" />
@@ -584,26 +590,26 @@ export default function App() {
         {mainTab === 'overview' && (
           <div className="space-y-3.5 sm:space-y-6">
             {/* Overview Sub-navigation */}
-            <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
+            <div className="flex items-center gap-1.5 sm:gap-2 bg-white p-1 sm:p-1.5 rounded-2xl border border-slate-200 shadow-xs w-full sm:w-fit overflow-x-auto no-scrollbar">
               <button
                 onClick={() => setOverviewSubTab('charts')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 touch-manipulation ${
                   overviewSubTab === 'charts'
                     ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <TrendingUp className="w-3.5 h-3.5" /> Biểu Đồ Doanh Thu & Buồng Phòng
+                <TrendingUp className="w-3.5 h-3.5" /> Biểu Đồ & Buồng Phòng
               </button>
               <button
                 onClick={() => setOverviewSubTab('report')}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 touch-manipulation ${
                   overviewSubTab === 'report'
                     ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <FileCheck2 className="w-3.5 h-3.5" /> Báo Cáo Tiến Độ Tự Động
+                <FileCheck2 className="w-3.5 h-3.5" /> Báo Cáo Tự Động
               </button>
             </div>
 
@@ -657,41 +663,41 @@ export default function App() {
         {mainTab === 'ansanh' && (
           <div className="space-y-3.5 sm:space-y-6">
             {/* Sub-nav for 3 core tables of An Sanh */}
-            <div className="bg-white p-2 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-2">
+            <div className="bg-white p-1 sm:p-2 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
               <button
                 onClick={() => setAnsanhSubTab('rooms')}
-                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap shrink-0 touch-manipulation ${
                   ansanhSubTab === 'rooms'
                     ? 'bg-emerald-600 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <BedDouble className="w-4 h-4" />
-                a. Quản Lý Đặt Phòng (Tầng 2, 3, 4)
+                <BedDouble className="w-4 h-4 shrink-0" />
+                a. Đặt Phòng
               </button>
 
               <button
                 onClick={() => setAnsanhSubTab('finance')}
-                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap shrink-0 touch-manipulation ${
                   ansanhSubTab === 'finance'
                     ? 'bg-emerald-600 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <DollarSign className="w-4 h-4" />
-                b. Quản Lý Thu Chi (An Sanh & Cá Nhân)
+                <DollarSign className="w-4 h-4 shrink-0" />
+                b. Thu Chi
               </button>
 
               <button
                 onClick={() => setAnsanhSubTab('attendance')}
-                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 ${
+                className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap shrink-0 touch-manipulation ${
                   ansanhSubTab === 'attendance'
                     ? 'bg-emerald-600 text-white shadow-sm'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
               >
-                <CalendarCheck className="w-4 h-4" />
-                c. Quản Lý Chấm Công Nhân Viên
+                <CalendarCheck className="w-4 h-4 shrink-0" />
+                c. Chấm Công
               </button>
             </div>
 
@@ -728,7 +734,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 mt-auto py-4 text-center text-xs text-slate-500">
+      <footer className="bg-white border-t border-slate-200 mt-auto py-4 text-center text-xs text-slate-500 pb-16 sm:pb-4">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>
             © 2026 <b>Trung Tâm Ở Cữ & Chăm Sóc Sản Khoa An Sanh</b> • Hệ thống quản lý điều hành tích hợp
@@ -738,6 +744,17 @@ export default function App() {
           </span>
         </div>
       </footer>
+
+      {/* Network connectivity status indicator for PWA */}
+      <OfflineIndicator />
+
+      {/* Mobile Bottom Navigation Bar (Android & iOS handheld ergonomics) */}
+      <MobileBottomNav
+        currentTab={mainTab}
+        onSelectTab={setMainTab}
+        crmCount={customers.length}
+        taskCount={tasks.length}
+      />
     </div>
   );
 }

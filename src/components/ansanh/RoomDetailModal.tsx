@@ -98,10 +98,10 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl max-w-xl w-full max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden border border-slate-100 animate-in fade-in slide-in-from-bottom sm:zoom-in-95 duration-200">
         {/* Room Header with Image */}
-        <div className="relative h-48 bg-slate-800 overflow-hidden">
+        <div className="relative h-40 sm:h-48 bg-slate-800 overflow-hidden shrink-0">
           {room.image ? (
             <img
               src={room.image}
@@ -146,7 +146,7 @@ export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({
 
         {/* Body Content */}
         {!isEditing ? (
-          <div className="p-6 space-y-4 text-slate-800">
+          <div className="p-4 sm:p-6 space-y-4 text-slate-800 overflow-y-auto flex-1">
             {/* Quick action buttons */}
             <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
               {room.status === 'Trống' && (
