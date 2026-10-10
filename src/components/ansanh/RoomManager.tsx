@@ -57,7 +57,7 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
 }) => {
   const [selectedFloor, setSelectedFloor] = useState<number | 'all'>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'table' | 'calendar'>('grid');
+  const [viewMode, setViewMode] = useState<'calendar' | 'grid'>('calendar');
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [modalOptions, setModalOptions] = useState<{ editing?: boolean; checkInDate?: string }>({});
 
@@ -160,60 +160,35 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
         </div>
       )}
 
-      {/* Main View Mode Selector: Sơ đồ | Danh sách | Lịch đặt phòng */}
+      {/* Main View Mode Selector: Lịch Phòng | Hiện trạng */}
       <div className="bg-white p-1.5 sm:p-2 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
         <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             type="button"
-            onClick={() => setViewMode('grid')}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap touch-manipulation ${
-              viewMode === 'grid'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            <LayoutGrid className="w-4 h-4 shrink-0" />
-            <span>Sơ Đồ Buồng Phòng</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setViewMode('table')}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap touch-manipulation ${
-              viewMode === 'table'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            <List className="w-4 h-4 shrink-0" />
-            <span>Danh Sách Phòng</span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => setViewMode('calendar')}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap touch-manipulation ${
+            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap touch-manipulation ${
               viewMode === 'calendar'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
             <Calendar className="w-4 h-4 shrink-0" />
-            <span>Lịch Đặt Phòng (Timeline)</span>
+            <span>Lịch Phòng</span>
           </button>
-        </div>
 
-        {onRefresh && (
           <button
             type="button"
-            onClick={onRefresh}
-            disabled={isLoading}
-            className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-emerald-700 rounded-xl border border-slate-200 transition-colors disabled:opacity-50 shrink-0"
-            title="Đồng bộ lại từ Supabase"
+            onClick={() => setViewMode('grid')}
+            className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 whitespace-nowrap touch-manipulation ${
+              viewMode === 'grid'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
           >
-            <RotateCcw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
+            <LayoutGrid className="w-4 h-4 shrink-0" />
+            <span>Hiện trạng</span>
           </button>
-        )}
+        </div>
       </div>
 
       {/* Render CALENDAR view if selected */}
@@ -328,188 +303,126 @@ export const RoomManager: React.FC<RoomManagerProps> = ({
             </div>
           </div>
 
-          {/* Grid View vs Table View */}
-          {viewMode === 'grid' ? (
-            <div className="space-y-6">
-              {(selectedFloor === 'all' ? floors : [selectedFloor]).map((floorNum) => {
-                const floorRooms = filteredRooms.filter((r) => r.floor === floorNum);
-                if (floorRooms.length === 0) return null;
+          {/* Hiện trạng: Grid View */}
+          <div className="space-y-6">
+            {(selectedFloor === 'all' ? floors : [selectedFloor]).map((floorNum) => {
+              const floorRooms = filteredRooms.filter((r) => r.floor === floorNum);
+              if (floorRooms.length === 0) return null;
 
-                return (
-                  <div key={floorNum} className="space-y-3">
-                    <div className="flex items-center justify-between px-1">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white font-bold text-xs flex items-center justify-center">
-                          {floorNum}
-                        </div>
-                        <h3 className="font-bold text-slate-800 text-sm tracking-tight">
-                          Sơ Đồ Phòng Tầng {floorNum} (6 phòng: P.{floorNum}01 - P.{floorNum}06)
-                        </h3>
+              return (
+                <div key={floorNum} className="space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white font-bold text-xs flex items-center justify-center">
+                        {floorNum}
                       </div>
-                      <span className="text-xs text-slate-500">
-                        {floorRooms.filter((r) => r.status === 'Đã nhận').length} đang ở •{' '}
-                        {floorRooms.filter((r) => r.status === 'Đặt chỗ').length} đã đặt •{' '}
-                        {floorRooms.filter((r) => r.status === 'Trống').length} trống
-                      </span>
+                      <h3 className="font-bold text-slate-800 text-sm tracking-tight">
+                        Sơ Đồ Phòng Tầng {floorNum} (6 phòng: P.{floorNum}01 - P.{floorNum}06)
+                      </h3>
                     </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {floorRooms.map((room) => {
-                        const isOccupied = room.status === 'Đã nhận';
-                        const isBooked = room.status === 'Đặt chỗ';
-
-                        return (
-                          <div
-                            key={room.id}
-                            onClick={() => handleOpenRoomModal(room)}
-                            className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer group flex flex-col justify-between"
-                          >
-                            {/* Image Thumbnail & Badge */}
-                            <div className="relative h-36 bg-slate-100 overflow-hidden">
-                              {room.image ? (
-                                <img
-                                  src={room.image}
-                                  alt={room.roomNumber}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                  referrerPolicy="no-referrer"
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-slate-200 flex items-center justify-center text-slate-400">
-                                  <BedDouble className="w-10 h-10" />
-                                </div>
-                              )}
-                              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-
-                              <div className="absolute top-2.5 left-2.5">
-                                <span className="font-bold text-sm bg-black/50 text-white px-2.5 py-1 rounded-lg backdrop-blur-sm">
-                                  {room.roomNumber}
-                                </span>
-                              </div>
-
-                              <div className="absolute top-2.5 right-2.5">
-                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border shadow-xs ${getStatusBadge(room.status)}`}>
-                                  {room.status}
-                                </span>
-                              </div>
-
-                              <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-white text-xs">
-                                <span>
-                                  {room.bedType} • {room.viewType}
-                                </span>
-                                <span className="font-bold">{formatCurrency(room.pricePerDay)}/ngày</span>
-                              </div>
-                            </div>
-
-                            {/* Room Card Body */}
-                            <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
-                              <div>
-                                {isOccupied || isBooked ? (
-                                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1">
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-slate-500">Khách ở:</span>
-                                      <span className="font-bold text-slate-800 truncate max-w-[150px]">
-                                        {room.guestName || 'Khách đã đặt'}
-                                      </span>
-                                    </div>
-                                    {room.checkInDate && (
-                                      <div className="flex items-center justify-between text-[11px] text-slate-500">
-                                        <span>Thời gian:</span>
-                                        <span>
-                                          {formatDate(room.checkInDate)} - {formatDate(room.checkOutDate)}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="py-2.5 px-3 rounded-xl bg-emerald-50/50 border border-emerald-100 text-xs text-emerald-800 flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                                    <span>Phòng sẵn sàng đón mẹ và bé ở cữ</span>
-                                  </div>
-                                )}
-
-                                {room.notes && (
-                                  <p className="text-xs text-slate-500 mt-2 line-clamp-1 italic">
-                                    {room.notes}
-                                  </p>
-                                )}
-                              </div>
-
-                              <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-emerald-700 font-semibold">
-                                <span className="flex items-center gap-1 group-hover:underline">
-                                  <Eye className="w-3.5 h-3.5" /> Xem & Tùy chỉnh phòng
-                                </span>
-                                <span className="text-slate-400 text-[11px]">Tầng {room.floor}</span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <span className="text-xs text-slate-500">
+                      {floorRooms.filter((r) => r.status === 'Đã nhận').length} đang ở •{' '}
+                      {floorRooms.filter((r) => r.status === 'Đặt chỗ').length} đã đặt •{' '}
+                      {floorRooms.filter((r) => r.status === 'Trống').length} trống
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            /* Table View */
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-slate-700">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <tr>
-                      <th className="px-5 py-3.5">Số Phòng & Tầng</th>
-                      <th className="px-4 py-3.5">Loại Giường</th>
-                      <th className="px-4 py-3.5">Không Gian</th>
-                      <th className="px-4 py-3.5">Giá / Ngày</th>
-                      <th className="px-4 py-3.5">Tình Trạng</th>
-                      <th className="px-4 py-3.5">Khách Đang Ở / Đặt Chỗ</th>
-                      <th className="px-4 py-3.5 text-right">Chi Tiết</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredRooms.map((room) => (
-                      <tr
-                        key={room.id}
-                        onClick={() => handleOpenRoomModal(room)}
-                        className="hover:bg-slate-50/80 cursor-pointer transition-colors"
-                      >
-                        <td className="px-5 py-3.5">
-                          <div className="font-bold text-slate-900">{room.roomNumber}</div>
-                          <div className="text-xs text-slate-400">Tầng {room.floor}</div>
-                        </td>
-                        <td className="px-4 py-3.5 text-xs text-slate-700">{room.bedType}</td>
-                        <td className="px-4 py-3.5 text-xs text-slate-700">{room.viewType}</td>
-                        <td className="px-4 py-3.5 text-xs font-semibold text-emerald-700">
-                          {formatCurrency(room.pricePerDay)}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadge(room.status)}`}>
-                            {room.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 text-xs text-slate-700">
-                          {room.guestName ? (
-                            <div>
-                              <span className="font-semibold text-slate-800">{room.guestName}</span>
-                              <span className="block text-[11px] text-slate-400">
-                                {formatDate(room.checkInDate)} - {formatDate(room.checkOutDate)}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {floorRooms.map((room) => {
+                      const isOccupied = room.status === 'Đã nhận';
+                      const isBooked = room.status === 'Đặt chỗ';
+
+                      return (
+                        <div
+                          key={room.id}
+                          onClick={() => handleOpenRoomModal(room)}
+                          className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md hover:border-emerald-300 transition-all cursor-pointer group flex flex-col justify-between"
+                        >
+                          {/* Image Thumbnail & Badge */}
+                          <div className="relative h-36 bg-slate-100 overflow-hidden">
+                            {room.image ? (
+                              <img
+                                src={room.image}
+                                alt={room.roomNumber}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-slate-200 flex items-center justify-center text-slate-400">
+                                <BedDouble className="w-10 h-10" />
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+
+                            <div className="absolute top-2.5 left-2.5">
+                              <span className="font-bold text-sm bg-black/50 text-white px-2.5 py-1 rounded-lg backdrop-blur-sm">
+                                {room.roomNumber}
                               </span>
                             </div>
-                          ) : (
-                            <span className="text-slate-400 italic">Trống</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          <button className="px-3 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg text-xs font-semibold text-slate-600 transition-colors">
-                            Tùy chỉnh
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+
+                            <div className="absolute top-2.5 right-2.5">
+                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border shadow-xs ${getStatusBadge(room.status)}`}>
+                                {room.status}
+                              </span>
+                            </div>
+
+                            <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-white text-xs">
+                              <span>
+                                {room.bedType} • {room.viewType}
+                              </span>
+                              <span className="font-bold">{formatCurrency(room.pricePerDay)}/ngày</span>
+                            </div>
+                          </div>
+
+                          {/* Room Card Body */}
+                          <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
+                            <div>
+                              {isOccupied || isBooked ? (
+                                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-slate-500">Khách ở:</span>
+                                    <span className="font-bold text-slate-800 truncate max-w-[150px]">
+                                      {room.guestName || 'Khách đã đặt'}
+                                    </span>
+                                  </div>
+                                  {room.checkInDate && (
+                                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                                      <span>Thời gian:</span>
+                                      <span>
+                                        {formatDate(room.checkInDate)} - {formatDate(room.checkOutDate)}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="py-2.5 px-3 rounded-xl bg-emerald-50/50 border border-emerald-100 text-xs text-emerald-800 flex items-center gap-2">
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                  <span>Phòng sẵn sàng đón mẹ và bé ở cữ</span>
+                                </div>
+                              )}
+
+                              {room.notes && (
+                                <p className="text-xs text-slate-500 mt-2 line-clamp-1 italic">
+                                  {room.notes}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-emerald-700 font-semibold">
+                              <span className="flex items-center gap-1 group-hover:underline">
+                                <Eye className="w-3.5 h-3.5" /> Xem & Tùy chỉnh phòng
+                              </span>
+                              <span className="text-slate-400 text-[11px]">Tầng {room.floor}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </>
       )}
 

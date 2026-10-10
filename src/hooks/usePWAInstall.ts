@@ -13,23 +13,41 @@ export function usePWAInstall() {
   useEffect(() => {
     // 1. Detect standalone mode (already running as installed PWA)
     const checkStandalone = () => {
-      const isStandalone =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-      setIsInstalled(isStandalone);
+      try {
+        const isStandalone =
+          (typeof window !== 'undefined' &&
+            typeof window.matchMedia === 'function' &&
+            window.matchMedia('(display-mode: standalone)')?.matches) ||
+          (typeof window !== 'undefined' &&
+            (window.navigator as unknown as { standalone?: boolean })?.standalone === true);
+        setIsInstalled(Boolean(isStandalone));
+      } catch {
+        setIsInstalled(false);
+      }
     };
 
     checkStandalone();
 
     // 2. Detect iOS devices
-    const userAgent = window.navigator.userAgent.toLowerCase();
-    const isIOSDevice = /iphone|ipad|ipod/.test(userAgent) && !(window as any).MSStream;
-    setIsIOS(isIOSDevice);
+    try {
+      const userAgent =
+        typeof window !== 'undefined' && window.navigator?.userAgent
+          ? window.navigator.userAgent.toLowerCase()
+          : '';
+      const isIOSDevice = /iphone|ipad|ipod/.test(userAgent) && !(window as any)?.MSStream;
+      setIsIOS(Boolean(isIOSDevice));
+    } catch {
+      setIsIOS(false);
+    }
 
     // 3. Listen for Android / Chrome install prompt event
     const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
+      try {
+        e.preventDefault();
+        setDeferredPrompt(e as BeforeInstallPromptEvent);
+      } catch {
+        // Safe fallback
+      }
     };
 
     const handleAppInstalled = () => {
@@ -37,12 +55,24 @@ export function usePWAInstall() {
       setDeferredPrompt(null);
     };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
+    try {
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.addEventListener('appinstalled', handleAppInstalled);
+      }
+    } catch {
+      // Safe fallback
+    }
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
+      try {
+        if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+          window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+          window.removeEventListener('appinstalled', handleAppInstalled);
+        }
+      } catch {
+        // Safe fallback
+      }
     };
   }, []);
 

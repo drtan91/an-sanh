@@ -313,17 +313,6 @@ export const FinanceManager: React.FC<FinanceManagerProps> = ({
           >
             <Plus className="w-4 h-4" /> Thêm Giao Dịch
           </button>
-
-          {onRefresh && (
-            <button
-              onClick={onRefresh}
-              disabled={isLoading}
-              className="p-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 hover:text-slate-900 transition-colors shrink-0 disabled:opacity-50"
-              title="Tải lại dữ liệu thu chi từ Supabase"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
-            </button>
-          )}
         </div>
       </div>
 

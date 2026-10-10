@@ -494,18 +494,6 @@ export const TaskManager: React.FC<TaskManagerProps> = ({
 
         {activeTab === 'tasks' && (
           <div className="flex items-center gap-2">
-            {onRefresh && (
-              <button
-                type="button"
-                onClick={onRefresh}
-                disabled={isLoading}
-                className="p-2 text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors disabled:opacity-50"
-                title="Tải lại từ Supabase"
-              >
-                <RotateCcw className={`w-4 h-4 ${isLoading ? 'animate-spin text-blue-600' : ''}`} />
-              </button>
-            )}
-
             {onSyncLocalTasks && (
               <button
                 type="button"

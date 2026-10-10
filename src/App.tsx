@@ -61,7 +61,10 @@ import {
   LogIn,
   LogOut,
   Lock,
-  ShieldCheck
+  ShieldCheck,
+  CheckCircle2,
+  AlertCircle,
+  X
 } from 'lucide-react';
 
 export default function App() {
@@ -91,6 +94,13 @@ export default function App() {
   const [isTransactionsLoading, setIsTransactionsLoading] = useState<boolean>(false);
   const [transactionsError, setTransactionsError] = useState<string | null>(null);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+
+  // Global Sync Coordination States
+  const [isGlobalSyncing, setIsGlobalSyncing] = useState<boolean>(false);
+  const [syncNotification, setSyncNotification] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   // Navigation States
   // 1: crm, 2: tasks, 3: ansanh, overview: dashboard
@@ -129,26 +139,47 @@ export default function App() {
 
   // Listen for Supabase Auth state changes
   useEffect(() => {
-    getStaffSession().then((session) => {
-      setCurrentUser(session?.user || null);
-      setIsAuthChecking(false);
-    });
+    let isMounted = true;
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) {
+        setIsAuthChecking(false);
+      }
+    }, 2500);
+
+    getStaffSession()
+      .then((session) => {
+        if (isMounted) {
+          setCurrentUser(session?.user || null);
+          setIsAuthChecking(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setIsAuthChecking(false);
+        }
+      });
 
     const unsubscribe = subscribeToAuthChanges((user) => {
-      setCurrentUser(user);
-      setIsAuthChecking(false);
-      if (!user) {
-        // Immediate state clearing when session ends
-        setCustomers([]);
-        setTasks([]);
-        setEmployees([]);
-        setRooms([]);
-        setTransactions([]);
-        setAttendance([]);
+      if (isMounted) {
+        setCurrentUser(user);
+        setIsAuthChecking(false);
+        if (!user) {
+          // Immediate state clearing when session ends
+          setCustomers([]);
+          setTasks([]);
+          setEmployees([]);
+          setRooms([]);
+          setTransactions([]);
+          setAttendance([]);
+        }
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimeout);
+      unsubscribe();
+    };
   }, []);
 
   // Load Tasks from Supabase (Source of Truth - requires authenticated staff session)
@@ -282,6 +313,123 @@ export default function App() {
       setIsTransactionsLoading(false);
     }
   }, [currentUser]);
+
+  // Điều phối đồng bộ toàn bộ dữ liệu hệ thống từ thanh tiêu đề
+  const handleGlobalSync = useCallback(async () => {
+    if (isGlobalSyncing || !currentUser) return;
+    setIsGlobalSyncing(true);
+    setSyncNotification(null);
+
+    const failedModules: string[] = [];
+
+    // 1. Đồng bộ CRM (Khách hàng)
+    try {
+      const { data, error } = await fetchCustomersFromSupabase({ autoSeedIfEmpty: false });
+      if (error) {
+        failedModules.push('CRM');
+        setCustomersError(error);
+      } else {
+        setCustomers(data);
+        setCustomersError(null);
+      }
+    } catch (err: any) {
+      failedModules.push('CRM');
+      setCustomersError(err?.message || 'Lỗi tải CRM');
+    }
+
+    // 2. Đồng bộ Tasks (Công việc)
+    try {
+      const { data, error } = await fetchTasksFromSupabase({ autoSeedIfEmpty: false });
+      if (error) {
+        failedModules.push('Công việc');
+        setTasksError(error);
+      } else {
+        setTasks(data);
+        saveStoredData.tasks(data);
+        setTasksError(null);
+      }
+    } catch (err: any) {
+      failedModules.push('Công việc');
+      setTasksError(err?.message || 'Lỗi tải công việc');
+    }
+
+    // 3. Đồng bộ Rooms & Bookings (Buồng phòng & Lịch đặt)
+    try {
+      const { data: roomsData, error: roomsErr } = await fetchRoomsFromSupabase({ autoSeedIfEmpty: false });
+      if (roomsErr) {
+        failedModules.push('Buồng phòng');
+        setRoomsError(roomsErr);
+      } else {
+        setRooms(roomsData);
+        saveStoredData.rooms(roomsData);
+        setRoomsError(null);
+
+        const { data: bookingsData, error: bookingsErr } = await fetchBookingsFromSupabase(roomsData);
+        if (bookingsErr) {
+          failedModules.push('Lịch đặt phòng');
+          setBookingsError(bookingsErr);
+        } else {
+          const fetchedBookings = bookingsData || [];
+          setBookings(fetchedBookings);
+          setBookingsError(null);
+
+          if (roomsData && roomsData.length > 0) {
+            const { updatedRooms, hasChanges } = await syncAllRoomsFromBookings(roomsData, fetchedBookings);
+            if (hasChanges) {
+              setRooms(updatedRooms);
+              saveStoredData.rooms(updatedRooms);
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      failedModules.push('Phòng & Đặt phòng');
+      setRoomsError(err?.message || 'Lỗi tải phòng');
+    }
+
+    // 4. Đồng bộ Thu Chi (Transactions)
+    try {
+      const { data: txData, error: txErr } = await fetchTransactionsFromSupabase();
+      if (txErr) {
+        failedModules.push('Thu Chi');
+        setTransactionsError(txErr);
+      } else {
+        setTransactions(txData);
+        saveStoredData.transactions(txData);
+        setTransactionsError(null);
+      }
+    } catch (err: any) {
+      failedModules.push('Thu Chi');
+      setTransactionsError(err?.message || 'Lỗi tải thu chi');
+    }
+
+    // 5. Đồng bộ Dữ liệu vận hành (Nhân viên & Chấm công từ localStorage)
+    try {
+      const localData = loadStoredData();
+      setEmployees(localData.employees);
+      setAttendance(localData.attendance);
+    } catch {
+      failedModules.push('Dữ liệu vận hành');
+    }
+
+    setIsGlobalSyncing(false);
+
+    if (failedModules.length === 0) {
+      setSyncNotification({
+        type: 'success',
+        message: 'Đồng bộ toàn bộ dữ liệu hệ thống từ Supabase thành công!',
+      });
+    } else {
+      setSyncNotification({
+        type: 'error',
+        message: `Đồng bộ chưa hoàn tất: lỗi tải dữ liệu tại [${failedModules.join(', ')}].`,
+      });
+    }
+
+    setTimeout(() => {
+      setSyncNotification((prev) => (prev?.type === 'success' ? null : prev));
+    }, 4500);
+  }, [isGlobalSyncing, currentUser]);
 
   // When auth changes, fetch tasks & customers & rooms & operational data if logged in, or clear if logged out
   useEffect(() => {
@@ -682,15 +830,31 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo and Brand */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center shadow-md shadow-emerald-600/20">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white flex items-center justify-center shadow-md shadow-emerald-600/20 shrink-0">
                 <HeartHandshake className="w-6 h-6" />
               </div>
-              <div>
+              <div className="shrink-0">
                 <h1 className="font-extrabold text-base sm:text-lg tracking-tight text-slate-900 leading-tight">
                   AN SANH - Dr.Tan
                 </h1>
               </div>
+
+              {/* Nút Đồng Bộ Chung Toàn Hệ Thống */}
+              <button
+                type="button"
+                onClick={handleGlobalSync}
+                disabled={isGlobalSyncing}
+                className="ml-1 sm:ml-2 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl text-xs font-semibold border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 hover:text-emerald-900 transition-all shadow-xs flex items-center gap-1.5 shrink-0 disabled:opacity-60 active:scale-95"
+                title="Đồng bộ dữ liệu toàn hệ thống từ Supabase"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 text-emerald-700 ${
+                    isGlobalSyncing ? 'animate-spin text-emerald-800' : ''
+                  }`}
+                />
+                <span className="hidden sm:inline font-bold">Đồng bộ</span>
+              </button>
             </div>
 
             {/* Quick Actions, Auth Status, PWA Install & Reset Demo */}
@@ -782,6 +946,36 @@ export default function App() {
         </div>
       </header>
 
+      {/* Global Sync Notification */}
+      {syncNotification && (
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 pt-3">
+          <div
+            className={`p-3 rounded-2xl border text-xs font-semibold flex items-center justify-between gap-3 shadow-xs animate-in fade-in slide-in-from-top-2 duration-200 ${
+              syncNotification.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-rose-50 border-rose-200 text-rose-800'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {syncNotification.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              )}
+              <span>{syncNotification.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSyncNotification(null)}
+              className="p-1 hover:bg-black/5 rounded-lg text-slate-500 hover:text-slate-800 transition-colors"
+              title="Đóng thông báo"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-3.5 sm:py-6">
         {/* VIEW 1: OVERVIEW & AUTOMATED REPORTS */}
@@ -835,7 +1029,7 @@ export default function App() {
             onDeleteCustomer={handleDeleteCustomer}
             isLoading={isCustomersLoading}
             error={customersError}
-            onRefresh={loadCustomers}
+            onRefresh={handleGlobalSync}
           />
         )}
 
@@ -852,7 +1046,7 @@ export default function App() {
             onDeleteEmployee={handleDeleteEmployee}
             isLoading={isTasksLoading}
             error={tasksError}
-            onRefresh={loadTasks}
+            onRefresh={handleGlobalSync}
             onSyncLocalTasks={handleSyncLocalTasks}
           />
         )}
@@ -912,9 +1106,7 @@ export default function App() {
                 onDeleteBooking={handleDeleteBooking}
                 isLoading={isRoomsLoading || isBookingsLoading}
                 error={roomsError || bookingsError}
-                onRefresh={() => {
-                  loadRooms();
-                }}
+                onRefresh={handleGlobalSync}
               />
             )}
 
@@ -926,7 +1118,7 @@ export default function App() {
                 onDeleteTransaction={handleDeleteTransaction}
                 isLoading={isTransactionsLoading}
                 error={transactionsError}
-                onRefresh={loadTransactions}
+                onRefresh={handleGlobalSync}
               />
             )}
 
