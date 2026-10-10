@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Customer, Employee, Room, Task, Transaction, AttendanceRecord, RoomBooking } from './types';
 import { loadStoredData, saveStoredData } from './utils/storage';
 import { INITIAL_TASKS } from './data/initialData';
@@ -31,6 +31,11 @@ import {
   deleteBookingFromSupabase,
   syncAllRoomsFromBookings,
 } from './services/bookingService';
+import {
+  fetchTransactions as fetchTransactionsFromSupabase,
+  createTransaction as createTransactionInSupabase,
+  deleteTransaction as deleteTransactionInSupabase,
+} from './services/transactionService';
 import { CustomerList } from './components/crm/CustomerList';
 import { TaskManager } from './components/tasks/TaskManager';
 import { RoomManager } from './components/ansanh/RoomManager';
@@ -73,12 +78,18 @@ export default function App() {
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const roomsRef = useRef<Room[]>(rooms);
+  useEffect(() => {
+    roomsRef.current = rooms;
+  }, [rooms]);
   const [isRoomsLoading, setIsRoomsLoading] = useState<boolean>(true);
   const [roomsError, setRoomsError] = useState<string | null>(null);
   const [bookings, setBookings] = useState<RoomBooking[]>([]);
   const [isBookingsLoading, setIsBookingsLoading] = useState<boolean>(false);
   const [bookingsError, setBookingsError] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isTransactionsLoading, setIsTransactionsLoading] = useState<boolean>(false);
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
 
   // Navigation States
@@ -174,7 +185,7 @@ export default function App() {
   }, [currentUser]);
 
   // Load Bookings from Supabase
-  const loadBookings = useCallback(async (currentRoomsList: Room[] = rooms) => {
+  const loadBookings = useCallback(async (currentRoomsList?: Room[]) => {
     if (!currentUser) {
       setBookings([]);
       setIsBookingsLoading(false);
@@ -182,10 +193,12 @@ export default function App() {
       return;
     }
 
+    const roomsToSync = currentRoomsList && currentRoomsList.length > 0 ? currentRoomsList : roomsRef.current;
+
     setIsBookingsLoading(true);
     setBookingsError(null);
     try {
-      const { data, error } = await fetchBookingsFromSupabase(currentRoomsList);
+      const { data, error } = await fetchBookingsFromSupabase(roomsToSync);
       if (error && (!data || data.length === 0)) {
         setBookingsError(error);
       }
@@ -196,8 +209,8 @@ export default function App() {
       // Khi App load hoặc refresh rooms/bookings: Gọi syncAllRoomsFromBookings
       // để xác định trạng thái phòng theo CURRENT_DATE ([check_in, check_out)).
       // Booking ngày [10/10 -> 15/10): ngày 15/10 không còn active, rooms = Trống (nếu ko có booking khác).
-      if (currentRoomsList && currentRoomsList.length > 0) {
-        const { updatedRooms, hasChanges } = await syncAllRoomsFromBookings(currentRoomsList, fetchedBookings);
+      if (roomsToSync && roomsToSync.length > 0) {
+        const { updatedRooms, hasChanges } = await syncAllRoomsFromBookings(roomsToSync, fetchedBookings);
         if (hasChanges) {
           setRooms(updatedRooms);
           saveStoredData.rooms(updatedRooms);
@@ -208,7 +221,7 @@ export default function App() {
     } finally {
       setIsBookingsLoading(false);
     }
-  }, [currentUser, rooms]);
+  }, [currentUser]);
 
   // Load Rooms from Supabase (Source of Truth - shared across all devices & environments)
   const loadRooms = useCallback(async () => {
@@ -237,19 +250,52 @@ export default function App() {
     }
   }, [currentUser, loadBookings]);
 
+  // Load Transactions from Supabase (Source of Truth - public.transactions)
+  const loadTransactions = useCallback(async () => {
+    if (!currentUser) {
+      setTransactions([]);
+      setIsTransactionsLoading(false);
+      setTransactionsError(null);
+      return;
+    }
+
+    setIsTransactionsLoading(true);
+    setTransactionsError(null);
+    try {
+      const { data, error } = await fetchTransactionsFromSupabase();
+      if (error) {
+        setTransactionsError(error);
+        // Fallback tạm thời từ localStorage nếu gặp lỗi mạng
+        const localData = loadStoredData();
+        if (localData.transactions && localData.transactions.length > 0) {
+          setTransactions(localData.transactions);
+        }
+      } else {
+        // Nguồn dữ liệu chính từ Supabase
+        setTransactions(data);
+        // Backup an toàn vào localStorage
+        saveStoredData.transactions(data);
+      }
+    } catch (err: any) {
+      setTransactionsError(err?.message || 'Không thể tải dữ liệu thu chi. Vui lòng thử lại.');
+    } finally {
+      setIsTransactionsLoading(false);
+    }
+  }, [currentUser]);
+
   // When auth changes, fetch tasks & customers & rooms & operational data if logged in, or clear if logged out
   useEffect(() => {
     if (currentUser) {
-      // 1. Load internal operational data from local storage (employees, transactions, attendance)
+      // 1. Load internal operational data from local storage (employees, attendance)
       const data = loadStoredData();
       setEmployees(data.employees);
-      setTransactions(data.transactions);
       setAttendance(data.attendance);
 
-      // 2. Load Supabase data (single source of truth for customers, tasks, rooms, bookings)
+      // 2. Load Supabase data (single source of truth for customers, tasks, rooms, bookings, transactions)
       loadCustomers();
       loadTasks();
       loadRooms();
+      loadTransactions();
     } else {
       // Clear all internal data from state when logged out
       setCustomers([]);
@@ -263,8 +309,9 @@ export default function App() {
       setIsTasksLoading(false);
       setIsRoomsLoading(false);
       setIsBookingsLoading(false);
+      setIsTransactionsLoading(false);
     }
-  }, [currentUser, loadCustomers, loadTasks, loadRooms, loadBookings]);
+  }, [currentUser, loadCustomers, loadTasks, loadRooms, loadTransactions]);
 
   // Logout handler: sign out and wipe state
   const handleLogout = async () => {
@@ -521,61 +568,88 @@ export default function App() {
   const handleCheckoutBooking = async (
     bookingId: string,
     actualEndDate?: string
-  ): Promise<void> => {
+  ): Promise<{ success: boolean; error?: string | null }> => {
     setBookingsError(null);
     const { data, error } = await checkoutBookingInSupabase(bookingId, actualEndDate, bookings, rooms);
     if (error) {
       setBookingsError(error);
-      return;
+      return { success: false, error };
     }
     if (data) {
       setBookings((prev) => prev.map((b) => (b.id === bookingId ? data : b)));
     }
     await loadRooms();
+    return { success: true, error: null };
   };
 
-  const handleCancelBooking = async (bookingId: string): Promise<void> => {
+  const handleCancelBooking = async (
+    bookingId: string
+  ): Promise<{ success: boolean; error?: string | null }> => {
     setBookingsError(null);
     const { data, error } = await cancelBookingInSupabase(bookingId, bookings, rooms);
     if (error) {
       setBookingsError(error);
-      return;
+      return { success: false, error };
     }
     if (data) {
       setBookings((prev) => prev.map((b) => (b.id === bookingId ? data : b)));
     }
     await loadRooms();
+    return { success: true, error: null };
   };
 
-  const handleDeleteBooking = async (bookingId: string, roomId: string): Promise<void> => {
+  const handleDeleteBooking = async (
+    bookingId: string,
+    roomId: string
+  ): Promise<{ success: boolean; error?: string | null }> => {
     setBookingsError(null);
     const { success, error } = await deleteBookingFromSupabase(bookingId, roomId, bookings, rooms);
     if (!success) {
       setBookingsError(error);
-      return;
+      return { success: false, error: error || 'Lỗi khi xóa đặt phòng' };
     }
     setBookings((prev) => prev.filter((b) => b.id !== bookingId));
     await loadRooms();
+    return { success: true, error: null };
   };
 
-  // Handlers for Finance
-  const handleAddTransaction = (txData: Partial<Transaction>) => {
-    const newTx: Transaction = {
-      id: `tx-${Date.now()}`,
-      scope: txData.scope || 'An Sanh',
-      type: txData.type || 'Thu',
-      amount: txData.amount || 0,
-      date: txData.date || new Date().toISOString().split('T')[0],
-      content: txData.content || '',
-      paymentSource: txData.paymentSource || 'Chuyển khoản VCB',
-      category: txData.category || 'Chung',
-      note: txData.note,
-    };
-    updateTransactions((prev) => [newTx, ...prev]);
+  // Handlers for Finance (Supabase public.transactions)
+  const handleAddTransaction = async (
+    txData: Partial<Transaction>
+  ): Promise<boolean> => {
+    setTransactionsError(null);
+    const { data, error } = await createTransactionInSupabase(txData);
+    if (error || !data) {
+      const errMsg = error || 'Không thể lưu giao dịch. Vui lòng kiểm tra kết nối.';
+      setTransactionsError(errMsg);
+      return false;
+    }
+
+    // Chỉ cập nhật UI sau khi Supabase INSERT thành công
+    setTransactions((prev) => {
+      const updated = [data, ...prev];
+      saveStoredData.transactions(updated); // Sync backup
+      return updated;
+    });
+    return true;
   };
 
-  const handleDeleteTransaction = (id: string) => {
-    updateTransactions((prev) => prev.filter((t) => t.id !== id));
+  const handleDeleteTransaction = async (id: string): Promise<boolean> => {
+    setTransactionsError(null);
+    const { success, error } = await deleteTransactionInSupabase(id);
+    if (!success || error) {
+      const errMsg = error || 'Không thể xóa giao dịch.';
+      setTransactionsError(errMsg);
+      return false;
+    }
+
+    // Chỉ xóa khỏi UI sau khi Supabase DELETE thành công
+    setTransactions((prev) => {
+      const updated = prev.filter((t) => t.id !== id);
+      saveStoredData.transactions(updated); // Sync backup
+      return updated;
+    });
+    return true;
   };
 
   // 1. Loading state while checking Supabase session
@@ -850,6 +924,9 @@ export default function App() {
                 transactions={transactions}
                 onAddTransaction={handleAddTransaction}
                 onDeleteTransaction={handleDeleteTransaction}
+                isLoading={isTransactionsLoading}
+                error={transactionsError}
+                onRefresh={loadTransactions}
               />
             )}
 

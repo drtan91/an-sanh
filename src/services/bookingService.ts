@@ -534,11 +534,13 @@ export const checkoutBookingInSupabase = async (
 ): Promise<{ data: RoomBooking | null; error: string | null }> => {
   const current = existingBookings.find((b) => b.id === bookingId);
   if (!current) {
-    return { data: null, error: 'Không tìm thấy thông tin đặt phòng.' };
+    return { data: null, error: 'Không tìm thấy thông tin đặt phòng cần kết thúc.' };
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const end = actualEndDate || (current.checkInDate > todayStr ? current.checkInDate : todayStr);
+  const todayStr = getTodayDateString();
+  const targetEnd = actualEndDate || todayStr;
+  // Đảm bảo không vi phạm ràng buộc CHECK (check_out_date > check_in_date) trên Postgres
+  const end = targetEnd > current.checkInDate ? targetEnd : current.checkOutDate;
 
   return updateBookingInSupabase(
     bookingId,
@@ -592,6 +594,6 @@ export const deleteBookingFromSupabase = async (
 
     return { success: true, error: null };
   } catch (err: any) {
-    return { success: true, error: null };
+    return { success: false, error: err?.message || 'Lỗi khi xóa đặt phòng từ Supabase' };
   }
 };

@@ -34,9 +34,9 @@ interface RoomManagerProps {
     bookingId: string,
     data: Partial<RoomBooking>
   ) => Promise<{ success: boolean; error?: string | null }>;
-  onCheckoutBooking?: (bookingId: string, actualEndDate?: string) => Promise<void>;
-  onCancelBooking?: (bookingId: string) => Promise<void>;
-  onDeleteBooking?: (bookingId: string, roomId: string) => Promise<void>;
+  onCheckoutBooking?: (bookingId: string, actualEndDate?: string) => Promise<{ success: boolean; error?: string | null } | void>;
+  onCancelBooking?: (bookingId: string) => Promise<{ success: boolean; error?: string | null } | void>;
+  onDeleteBooking?: (bookingId: string, roomId: string) => Promise<{ success: boolean; error?: string | null } | void>;
   isLoading?: boolean;
   error?: string | null;
   onRefresh?: () => void;

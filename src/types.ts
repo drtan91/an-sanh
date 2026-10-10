@@ -109,6 +109,9 @@ export interface Transaction {
   paymentSource: PaymentSource;
   category: string;
   note?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type AttendanceStatus = 'Có mặt' | 'Đi muộn' | 'Nghỉ có phép' | 'Nghỉ không phép';

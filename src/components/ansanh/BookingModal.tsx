@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { RoomBooking, BookingStatus, Room } from '../../types';
 import { formatCurrency, formatDate } from '../../utils/storage';
-import { checkBookingOverlap } from '../../services/bookingService';
+import { checkBookingOverlap, getTodayDateString } from '../../services/bookingService';
 import {
   X,
   Calendar,
@@ -16,7 +16,8 @@ import {
   LogOut,
   Ban,
   Trash2,
-  Info
+  Info,
+  RefreshCw
 } from 'lucide-react';
 
 interface BookingModalProps {
@@ -31,9 +32,9 @@ interface BookingModalProps {
     bookingData: Partial<RoomBooking>,
     bookingId?: string
   ) => Promise<{ success: boolean; error?: string | null }>;
-  onCheckoutBooking?: (bookingId: string, actualEndDate?: string) => Promise<void>;
-  onCancelBooking?: (bookingId: string) => Promise<void>;
-  onDeleteBooking?: (bookingId: string, roomId: string) => Promise<void>;
+  onCheckoutBooking?: (bookingId: string, actualEndDate?: string) => Promise<{ success: boolean; error?: string | null } | void>;
+  onCancelBooking?: (bookingId: string) => Promise<{ success: boolean; error?: string | null } | void>;
+  onDeleteBooking?: (bookingId: string, roomId: string) => Promise<{ success: boolean; error?: string | null } | void>;
 }
 
 export const BookingModal: React.FC<BookingModalProps> = ({
@@ -87,6 +88,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'checkout' | 'cancel' | 'delete' | null>(null);
 
   // Find selected room
   const selectedRoom = useMemo(() => {
@@ -194,51 +196,69 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   // Quick checkout handler
-  const handleQuickCheckout = async () => {
+  const handleQuickCheckoutConfirm = async () => {
     if (!booking || !onCheckoutBooking) return;
-    const today = new Date().toISOString().split('T')[0];
-    if (window.confirm(`Xác nhận kết thúc đợt lưu trú cho khách "${booking.guestName}" tại phòng ${booking.roomNumber} kể từ hôm nay (${formatDate(today)})? Ngày sau phòng sẽ tự động chuyển sang Trống.`)) {
-      setIsSubmitting(true);
-      try {
-        await onCheckoutBooking(booking.id, today);
-        onClose();
-      } catch (err: any) {
-        setFormError(err?.message || 'Lỗi khi trả phòng');
-      } finally {
+    setIsSubmitting(true);
+    setFormError(null);
+    try {
+      const today = getTodayDateString();
+      const res = await onCheckoutBooking(booking.id, today);
+      if (res && typeof res === 'object' && res.success === false) {
+        setFormError(res.error || 'Lỗi khi kết thúc lưu trú trên Supabase');
         setIsSubmitting(false);
+        setConfirmAction(null);
+        return;
       }
+      onClose();
+    } catch (err: any) {
+      setFormError(err?.message || 'Lỗi khi kết thúc lưu trú');
+    } finally {
+      setIsSubmitting(false);
+      setConfirmAction(null);
     }
   };
 
   // Quick cancel handler
-  const handleCancel = async () => {
+  const handleCancelConfirm = async () => {
     if (!booking || !onCancelBooking) return;
-    if (window.confirm(`Xác nhận hủy lịch đặt phòng của khách "${booking.guestName}"?`)) {
-      setIsSubmitting(true);
-      try {
-        await onCancelBooking(booking.id);
-        onClose();
-      } catch (err: any) {
-        setFormError(err?.message || 'Lỗi khi hủy lịch đặt');
-      } finally {
+    setIsSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await onCancelBooking(booking.id);
+      if (res && typeof res === 'object' && res.success === false) {
+        setFormError(res.error || 'Lỗi khi hủy lịch đặt phòng trên Supabase');
         setIsSubmitting(false);
+        setConfirmAction(null);
+        return;
       }
+      onClose();
+    } catch (err: any) {
+      setFormError(err?.message || 'Lỗi khi hủy lịch đặt');
+    } finally {
+      setIsSubmitting(false);
+      setConfirmAction(null);
     }
   };
 
   // Delete booking handler
-  const handleDelete = async () => {
+  const handleDeleteConfirm = async () => {
     if (!booking || !onDeleteBooking) return;
-    if (window.confirm(`Bạn có chắc chắn muốn XÓA vĩnh viễn booking này của khách "${booking.guestName}"?`)) {
-      setIsSubmitting(true);
-      try {
-        await onDeleteBooking(booking.id, booking.roomId);
-        onClose();
-      } catch (err: any) {
-        setFormError(err?.message || 'Lỗi khi xóa đặt phòng');
-      } finally {
+    setIsSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await onDeleteBooking(booking.id, booking.roomId);
+      if (res && typeof res === 'object' && res.success === false) {
+        setFormError(res.error || 'Lỗi khi xóa đặt phòng khỏi Supabase');
         setIsSubmitting(false);
+        setConfirmAction(null);
+        return;
       }
+      onClose();
+    } catch (err: any) {
+      setFormError(err?.message || 'Lỗi khi xóa đặt phòng');
+    } finally {
+      setIsSubmitting(false);
+      setConfirmAction(null);
     }
   };
 
@@ -487,37 +507,172 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
                 Thao Tác Nhanh Cho Booking Này
               </span>
-              <div className="flex flex-wrap items-center gap-2">
-                {onCheckoutBooking && status !== 'Kết thúc' && (
-                  <button
-                    type="button"
-                    onClick={handleQuickCheckout}
-                    className="px-3 py-1.5 text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl transition-colors flex items-center gap-1.5"
-                  >
-                    <LogOut className="w-3.5 h-3.5" /> Kết thúc lưu trú (Trả phòng)
-                  </button>
-                )}
 
-                {onCancelBooking && status !== 'Đã hủy' && (
-                  <button
-                    type="button"
-                    onClick={handleCancel}
-                    className="px-3 py-1.5 text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5"
-                  >
-                    <Ban className="w-3.5 h-3.5" /> Hủy lịch đặt
-                  </button>
-                )}
+              {confirmAction === null ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {onCheckoutBooking && status !== 'Kết thúc' && (
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => {
+                        setFormError(null);
+                        setConfirmAction('checkout');
+                      }}
+                      className="px-3 py-1.5 text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <LogOut className="w-3.5 h-3.5" /> Kết thúc lưu trú (Trả phòng)
+                    </button>
+                  )}
 
-                {onDeleteBooking && (
-                  <button
-                    type="button"
-                    onClick={handleDelete}
-                    className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors flex items-center gap-1.5 ml-auto"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Xóa hẳn
-                  </button>
-                )}
-              </div>
+                  {onCancelBooking && status !== 'Đã hủy' && (
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => {
+                        setFormError(null);
+                        setConfirmAction('cancel');
+                      }}
+                      className="px-3 py-1.5 text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Ban className="w-3.5 h-3.5" /> Hủy lịch đặt
+                    </button>
+                  )}
+
+                  {onDeleteBooking && (
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => {
+                        setFormError(null);
+                        setConfirmAction('delete');
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-colors flex items-center gap-1.5 ml-auto disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Xóa hẳn
+                    </button>
+                  )}
+                </div>
+              ) : confirmAction === 'checkout' ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2 animate-in fade-in duration-150">
+                  <div className="flex items-start gap-2 text-amber-900">
+                    <LogOut className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
+                    <div className="text-xs">
+                      <p className="font-bold">Xác nhận kết thúc lưu trú (Trả phòng)?</p>
+                      <p className="text-[11px] text-amber-800 mt-0.5">
+                        Booking của khách <strong>{booking?.guestName}</strong> tại phòng <strong>{booking?.roomNumber}</strong> sẽ chuyển sang <strong>"Kết thúc"</strong>. Phòng sẽ được giải phóng ngay lập tức.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => setConfirmAction(null)}
+                      className="px-3 py-1.5 rounded-lg border border-amber-300 text-amber-900 hover:bg-amber-100 text-xs font-semibold disabled:opacity-50"
+                    >
+                      Quay lại
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={handleQuickCheckoutConfirm}
+                      className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang trả phòng...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Xác nhận trả phòng</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : confirmAction === 'cancel' ? (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl space-y-2 animate-in fade-in duration-150">
+                  <div className="flex items-start gap-2 text-rose-900">
+                    <Ban className="w-4 h-4 text-rose-700 mt-0.5 shrink-0" />
+                    <div className="text-xs">
+                      <p className="font-bold">Xác nhận hủy lịch đặt phòng?</p>
+                      <p className="text-[11px] text-rose-800 mt-0.5">
+                        Lịch đặt của khách <strong>{booking?.guestName}</strong> tại phòng <strong>{booking?.roomNumber}</strong> sẽ chuyển sang <strong>"Đã hủy"</strong> và không còn khóa lịch phòng.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => setConfirmAction(null)}
+                      className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-900 hover:bg-rose-100 text-xs font-semibold disabled:opacity-50"
+                    >
+                      Quay lại
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={handleCancelConfirm}
+                      className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang hủy...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Xác nhận hủy lịch</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl space-y-2 animate-in fade-in duration-150">
+                  <div className="flex items-start gap-2 text-rose-900">
+                    <Trash2 className="w-4 h-4 text-rose-700 mt-0.5 shrink-0" />
+                    <div className="text-xs">
+                      <p className="font-bold">Xác nhận XÓA HẲN booking này?</p>
+                      <p className="text-[11px] text-rose-800 mt-0.5">
+                        Booking của khách <strong>{booking?.guestName}</strong> sẽ bị xóa vĩnh viễn khỏi Supabase. Phòng <strong>{booking?.roomNumber}</strong> vẫn được giữ nguyên. Thao tác không thể hoàn tác.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => setConfirmAction(null)}
+                      className="px-3 py-1.5 rounded-lg border border-rose-300 text-rose-900 hover:bg-rose-100 text-xs font-semibold disabled:opacity-50"
+                    >
+                      Hủy bỏ
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={handleDeleteConfirm}
+                      className="px-3.5 py-1.5 rounded-lg bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold shadow-xs flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Đang xóa...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Xác nhận xóa vĩnh viễn</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

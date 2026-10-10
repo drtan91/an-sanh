@@ -26,7 +26,7 @@ interface RoomDetailModalProps {
   initialCheckInDate?: string;
   bookings?: RoomBooking[];
   onOpenBookingModal?: (booking: RoomBooking | null, initialRoomId?: string, initialDate?: string) => void;
-  onCheckoutBooking?: (bookingId: string) => Promise<void>;
+  onCheckoutBooking?: (bookingId: string) => Promise<{ success: boolean; error?: string | null } | void>;
 }
 
 export const RoomDetailModal: React.FC<RoomDetailModalProps> = ({

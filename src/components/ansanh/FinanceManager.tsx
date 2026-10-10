@@ -13,24 +13,37 @@ import {
   Trash2,
   X,
   TrendingUp,
-  Filter
+  Filter,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 
 interface FinanceManagerProps {
   transactions: Transaction[];
-  onAddTransaction: (tx: Partial<Transaction>) => void;
-  onDeleteTransaction: (id: string) => void;
+  onAddTransaction: (tx: Partial<Transaction>) => Promise<boolean> | void;
+  onDeleteTransaction: (id: string) => Promise<boolean> | void;
+  isLoading?: boolean;
+  error?: string | null;
+  onRefresh?: () => void;
 }
 
 export const FinanceManager: React.FC<FinanceManagerProps> = ({
   transactions,
   onAddTransaction,
   onDeleteTransaction,
+  isLoading = false,
+  error = null,
+  onRefresh,
 }) => {
   const [selectedScope, setSelectedScope] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [txToDelete, setTxToDelete] = useState<Transaction | null>(null);
+  const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
   // Form states
   const [scope, setScope] = useState<TransactionScope>('An Sanh');
@@ -90,30 +103,72 @@ export const FinanceManager: React.FC<FinanceManagerProps> = ({
     });
   }, [transactions, selectedScope, selectedType, searchQuery]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     const numAmount = parseFloat(amount.replace(/[^0-9]/g, ''));
-    if (!numAmount || !content.trim()) {
-      alert('Vui lòng nhập số tiền hợp lệ và nội dung thu chi');
+    if (!numAmount || numAmount <= 0) {
+      setSubmitError('Vui lòng nhập số tiền hợp lệ lớn hơn 0đ');
+      return;
+    }
+    if (!content.trim()) {
+      setSubmitError('Vui lòng nhập nội dung thu chi');
       return;
     }
 
-    onAddTransaction({
-      scope,
-      type,
-      amount: numAmount,
-      content: content.trim(),
-      date,
-      paymentSource,
-      category: category.trim() || 'Thu chi chung',
-      note: note.trim() || undefined,
-    });
+    setIsSubmitting(true);
+    try {
+      const res = await onAddTransaction({
+        scope,
+        type,
+        amount: numAmount,
+        content: content.trim(),
+        date,
+        paymentSource,
+        category: category.trim() || 'Thu chi chung',
+        note: note.trim() || undefined,
+      });
 
-    // Reset form
-    setAmount('');
-    setContent('');
-    setNote('');
-    setIsModalOpen(false);
+      // Nếu hàm trả về boolean false thì giữ modal để người dùng kiểm tra lại
+      if (res === false) {
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Reset form khi thành công
+      setAmount('');
+      setContent('');
+      setNote('');
+      setIsModalOpen(false);
+    } catch (err: any) {
+      setSubmitError(err?.message || 'Không thể lưu giao dịch. Vui lòng kiểm tra kết nối.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenDelete = (tx: Transaction) => {
+    setTxToDelete(tx);
+    setDeleteModalError(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!txToDelete) return;
+    setIsDeleting(true);
+    setDeleteModalError(null);
+    try {
+      const res = await onDeleteTransaction(txToDelete.id);
+      if (res === false) {
+        setDeleteModalError('Không thể xóa giao dịch trên Supabase.');
+        setIsDeleting(false);
+        return;
+      }
+      setTxToDelete(null);
+    } catch (err: any) {
+      setDeleteModalError(err?.message || 'Lỗi khi xóa giao dịch');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -258,8 +313,37 @@ export const FinanceManager: React.FC<FinanceManagerProps> = ({
           >
             <Plus className="w-4 h-4" /> Thêm Giao Dịch
           </button>
+
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              disabled={isLoading}
+              className="p-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-xl text-slate-600 hover:text-slate-900 transition-colors shrink-0 disabled:opacity-50"
+              title="Tải lại dữ liệu thu chi từ Supabase"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-emerald-600' : ''}`} />
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Global Error Banner */}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-xs flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              className="text-xs font-bold underline hover:text-rose-900"
+            >
+              Thử lại
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Transactions Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -276,9 +360,19 @@ export const FinanceManager: React.FC<FinanceManagerProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredTransactions.length > 0 ? (
+              {isLoading && transactions.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <RefreshCw className="w-6 h-6 animate-spin text-emerald-600" />
+                      <span className="text-xs font-medium">Đang đồng bộ dữ liệu thu chi từ Supabase...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredTransactions.length > 0 ? (
                 filteredTransactions.map((tx) => {
                   const isThu = tx.type === 'Thu';
+                  const isTxDeleting = isDeleting && txToDelete?.id === tx.id;
 
                   return (
                     <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
@@ -343,15 +437,16 @@ export const FinanceManager: React.FC<FinanceManagerProps> = ({
 
                       <td className="px-4 py-3.5 text-right">
                         <button
-                          onClick={() => {
-                            if (window.confirm(`Xóa giao dịch "${tx.content}"?`)) {
-                              onDeleteTransaction(tx.id);
-                            }
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          onClick={() => handleOpenDelete(tx)}
+                          disabled={isDeleting && txToDelete?.id === tx.id}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
                           title="Xóa giao dịch"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {isDeleting && txToDelete?.id === tx.id ? (
+                            <RefreshCw className="w-4 h-4 animate-spin text-rose-500" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
                         </button>
                       </td>
                     </tr>
@@ -495,22 +590,91 @@ export const FinanceManager: React.FC<FinanceManagerProps> = ({
                 />
               </div>
 
+              {submitError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 px-3 py-2 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{submitError}</span>
+                </div>
+              )}
+
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-medium disabled:opacity-50"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  Lưu Giao Dịch
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Đang lưu vào Supabase...</span>
+                    </>
+                  ) : (
+                    <span>Lưu Giao Dịch</span>
+                  )}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal (Preview-compatible, no window.confirm) */}
+      {txToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-slate-100 animate-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900 text-center mb-1">
+              Xác nhận xóa giao dịch
+            </h3>
+            <p className="text-xs text-slate-500 text-center mb-4 leading-relaxed">
+              Bạn có chắc chắn muốn xóa giao dịch <strong className="text-slate-800">"{txToDelete.content}"</strong> ({formatCurrency(txToDelete.amount)}) khỏi cơ sở dữ liệu Supabase không? Thao tác này không thể hoàn tác.
+            </p>
+
+            {deleteModalError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span className="leading-tight">{deleteModalError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setTxToDelete(null);
+                  setDeleteModalError(null);
+                }}
+                className="flex-1 px-4 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition-colors disabled:opacity-50"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Đang xóa...</span>
+                  </>
+                ) : (
+                  <span>Xác nhận xóa</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
